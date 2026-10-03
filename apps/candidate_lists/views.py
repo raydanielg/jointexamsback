@@ -252,6 +252,10 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
             year = timezone.now().year
         mode = request.data.get("mode", "per_school")
         order = request.data.get("order", "name_asc")
+        try:
+            start = max(0, int(request.data.get("start") or 0))
+        except (TypeError, ValueError):
+            start = 0
         fields = {
             "name_asc": ["first_name", "middle_name", "last_name"],
             "name_desc": ["-first_name", "-middle_name", "-last_name"],
@@ -297,7 +301,7 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
                         seq = int(last.rsplit("/", 1)[-1])
                     except (ValueError, IndexError):
                         seq = 0
-                counters[key] = seq
+                counters[key] = max(seq, start - 1)
             counters[key] += 1
             return counters[key]
 
