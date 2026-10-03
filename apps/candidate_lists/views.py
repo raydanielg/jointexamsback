@@ -216,12 +216,18 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
             HRFlowable(width="100%", thickness=2.5, color=colors.black, spaceBefore=2, spaceAfter=1),
             HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=0, spaceAfter=10),
         ]
+        cell = ParagraphStyle("cell", fontSize=9, leading=11)
         rows = [["#", "Candidate number", "Full name", "School"]]
         for i, c in enumerate(qs, 1):
             rows.append([
-                str(i), c.candidate_number, _html.escape(c.full_name), _html.escape(c.school.school_name),
+                str(i), c.candidate_number,
+                Paragraph(_html.escape(c.full_name), cell),
+                Paragraph(_html.escape(c.school.school_name), cell),
             ])
-        table = Table(rows, repeatRows=1)
+        table = Table(
+            rows, repeatRows=1,
+            colWidths=[8 * mm, 32 * mm, 70 * mm, 70 * mm],
+        )
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
