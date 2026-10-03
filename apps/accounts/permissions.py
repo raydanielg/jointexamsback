@@ -87,6 +87,12 @@ def write_school(request):
                 "The selected organization is not accessible.", code="PERMISSION_DENIED"
             )
     if school is None:
+        # no active-school header and no explicit pick — default to the
+        # caller's first membership org
+        school = School.objects.filter(
+            pk__in=accessible_school_ids(request), parent__isnull=True
+        ).order_by("created_at").first()
+    if school is None:
         raise BusinessRuleError(
             "Select an organization to save this record under.",
             code="VALIDATION_ERROR",
