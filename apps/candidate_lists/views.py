@@ -236,6 +236,139 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
         response["Content-Disposition"] = f'inline; filename="{clist.name}.pdf"'
         return response
 
+    @action(detail=True, methods=["get"], url_path="checklist-pdf")
+    def checklist_pdf(self, request, pk=None):
+        """Verification checklist PDF — number / name / school + empty
+        Signature and Marks columns for manual marking. ``?school_id=``."""
+        clist = self.get_object()
+        qs = clist.candidates.select_related("school")
+        school_id = request.query_params.get("school_id")
+        if school_id:
+            qs = qs.filter(school_id=school_id)
+        from apps.core.db import numeric_suffix
+
+        qs = qs.annotate(num_seq=numeric_suffix("candidate_number")).order_by(
+            "num_seq", "candidate_number"
+        )
+
+        import html as _html
+        import io
+
+        from django.utils import timezone
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+        )
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4, topMargin=14 * mm, bottomMargin=14 * mm,
+            leftMargin=12 * mm, rightMargin=12 * mm,
+            title=f"{clist.name} — checklist",
+        )
+        head = ParagraphStyle(
+            "masthead", fontName="Helvetica-Bold", fontSize=11,
+            leading=15, alignment=TA_CENTER,
+        )
+        sub = ParagraphStyle("masthead-sub", parent=head, fontSize=9, leading=12)
+
+        def _fit(text: str) -> ParagraphStyle:
+            if len(text) <= 90:
+                return head
+            size = max(6.5, 11 * 90 / len(text))
+            return ParagraphStyle(
+                "masthead-fit", parent=head, fontSize=size, leading=size + 2
+            )
+
+        org_names = sorted({_html.escape(c.school.school_name.upper()) for c in qs})
+        schools_line = (
+            ", ".join(org_names[:-1]) + " &amp; " + org_names[-1]
+            if len(org_names) > 1
+            else (org_names[0] if org_names else "")
+        )
+
+        story = [
+            Paragraph("THE PRIME MINISTER'S OFFICE", sub),
+            Paragraph("REGIONAL ADMINISTRATION AND LOCAL GOVERNMENT", sub),
+            Paragraph(schools_line, _fit(schools_line)),
+            Paragraph(_html.escape(clist.name.upper()), head),
+        ]
+        meta = Table(
+            [[
+                Paragraph(_html.escape(clist.cohort or ""), sub),
+                Paragraph("CANDIDATE CHECKLIST", head),
+                Paragraph(
+                    _html.escape(timezone.now().strftime("%B, %Y.").upper()), sub
+                ),
+            ]],
+            colWidths=["33%", "34%", "33%"],
+        )
+        meta.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ("ALIGN", (1, 0), (1, 0), "CENTER"),
+            ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story += [
+            meta,
+            HRFlowable(width="100%", thickness=2.5, color=colors.black, spaceBefore=2, spaceAfter=1),
+            HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=0, spaceAfter=8),
+        ]
+
+        # Small non-wrapping font so each row stays on one line.
+        cell = ParagraphStyle("cell", fontName="Helvetica", fontSize=7, leading=8)
+        cellb = ParagraphStyle("cellb", parent=cell, fontName="Helvetica-Bold")
+
+        rows = [["#", "Candidate no.", "Full name", "School", "Signature", "Marks"]]
+        for i, c in enumerate(qs, 1):
+            rows.append([
+                str(i),
+                Paragraph(_html.escape(c.candidate_number), cell),
+                Paragraph(_html.escape(c.full_name), cellb),
+                Paragraph(_html.escape(c.school.school_name), cell),
+                "",
+                "",
+            ])
+        table = Table(
+            rows, repeatRows=1,
+            colWidths=[8 * mm, 32 * mm, 62 * mm, 44 * mm, 24 * mm, 16 * mm],
+        )
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#94a3b8")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 10 * mm))
+        story.append(Paragraph(
+            "Invigilator: ______________________ "
+            "Checked by: ______________________ "
+            "Date: ____ / ____ / ________",
+            sub,
+        ))
+        doc.build(story)
+        buffer.seek(0)
+        from django.http import FileResponse
+
+        return FileResponse(
+            buffer, as_attachment=False, content_type="application/pdf",
+            filename=f"{clist.name}-checklist.pdf",
+        )
+
     @action(detail=True, methods=["post"], url_path="generate-numbers")
     def generate_numbers(self, request, pk=None):
         """Renumber the list's candidates ``PREFIX/YEAR/0001`` — per school,
