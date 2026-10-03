@@ -405,37 +405,14 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
         if school_id:
             qs = qs.filter(school_id=school_id)
 
-        from apps.candidates.models import Candidate
-
         counters = {}
         base = f"{prefix}/{year}/"
-        base_school_ids = set(qs.values_list("school_id", flat=True))
-        pool = Candidate.objects.filter(school_id__in=base_school_ids)
 
         def next_seq(key, candidate):
-            """Continue after the highest ``prefix/year/`` number already used —
-            scoped per school for ``per_school``, across the selection for
-            ``combined``."""
+            """Clean sequential numbering over the selected candidates —
+            ``start`` (default 1) is the first number, no gaps."""
             if key not in counters:
-                scope = (
-                    pool if mode == "combined"
-                    else pool.filter(school_id=candidate.school_id)
-                )
-                last = (
-                    scope.filter(candidate_number__startswith=base)
-                    .exclude(pk=candidate.pk)
-                    .order_by("-candidate_number")
-                    .values_list("candidate_number", flat=True)
-                    .first()
-                )
-                seq = 0
-                if last:
-                    try:
-                        seq = int(last.rsplit("/", 1)[-1])
-                    except (ValueError, IndexError):
-                        seq = 0
-                # explicit start wins over continuing from the highest number
-                counters[key] = (start - 1) if start else seq
+                counters[key] = start - 1
             counters[key] += 1
             return counters[key]
 
