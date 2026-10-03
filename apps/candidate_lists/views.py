@@ -301,7 +301,8 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
                         seq = int(last.rsplit("/", 1)[-1])
                     except (ValueError, IndexError):
                         seq = 0
-                counters[key] = max(seq, start - 1)
+                # explicit start wins over continuing from the highest number
+                counters[key] = (start - 1) if start else seq
             counters[key] += 1
             return counters[key]
 
