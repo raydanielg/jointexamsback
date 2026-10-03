@@ -72,6 +72,39 @@ class ExaminationCandidateViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return ok(stats, message="Candidates enrolled.")
 
+    @action(detail=False, methods=["post"], url_path="unenroll-list")
+    def unenroll_list(self, request):
+        """Bulk-unenroll every candidate of one list — ``{"examination", "list_id"}``.
+        Enrollments with marks are withdrawn (kept for the record); the rest
+        are deleted."""
+        from apps.enrollment.models import ExaminationCandidate
+
+        exam = _scoped_examination(request, request.data.get("examination"))
+        if not can_manage_exam(request, exam):
+            raise BusinessRuleError("Not authorized.", code="PERMISSION_DENIED")
+        list_id = request.data.get("list_id")
+        qs = ExaminationCandidate.objects.filter(
+            examination=exam, source_list_id=list_id
+        ).exclude(status=ExaminationCandidate.Status.WITHDRAWN)
+        with_marks = set(
+            qs.filter(marks__isnull=False).values_list("pk", flat=True)
+        )
+        removed, _ = qs.exclude(pk__in=with_marks).delete()
+        withdrawn = qs.filter(pk__in=with_marks).update(
+            status=ExaminationCandidate.Status.WITHDRAWN
+        )
+        log_action(
+            actor=request.user, action="LIST_UNENROLLED", entity=exam,
+            metadata={"list_id": str(list_id), "removed": removed, "withdrawn": withdrawn},
+        )
+        return ok(
+            {"removed": removed, "withdrawn": withdrawn},
+            message=(
+                f"{removed} removed"
+                + (f", {withdrawn} withdrawn (they have marks)." if withdrawn else ".")
+            ),
+        )
+
     @action(detail=False, methods=["post"], url_path="preview")
     def preview(self, request):
         serializer = EnrollmentPreviewSerializer(data=request.data)
