@@ -160,9 +160,20 @@ def tabularize(data, report_type):
         rows = [[g["grade"], g["count"]] for g in data["overall"]]
         sections.append({"title": "Overall", "columns": ["Grade", "Count"], "rows": rows})
         if data["by_school"]:
-            rows2 = [[g["exam_candidate__school__school_name"], g["grade"], g["count"]]
-                     for g in data["by_school"]]
-            sections.append({"title": "By School", "columns": ["School", "Grade", "Count"], "rows": rows2})
+            pivot = {}
+            for g in data["by_school"]:
+                sname = g["exam_candidate__school__school_name"]
+                pivot.setdefault(sname, {})[g["grade"]] = g["count"]
+            grades = sorted({gr for counts in pivot.values() for gr in counts})
+            rows2 = [
+                [sname] + [counts.get(gr, 0) for gr in grades] + [sum(counts.values())]
+                for sname, counts in sorted(pivot.items())
+            ]
+            sections.append({
+                "title": "By School",
+                "columns": ["School"] + grades + ["Total"],
+                "rows": rows2,
+            })
 
     elif report_type == "PERFORMANCE_ANALYSIS":
         a = data["analytics"]

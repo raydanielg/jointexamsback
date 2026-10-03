@@ -140,6 +140,20 @@ class ReportJobViewSet(viewsets.ReadOnlyModelViewSet):
             "by_school": by_school,
         })
 
+    @action(detail=False, methods=["get"], url_path="distribution-pdf")
+    def distribution_pdf(self, request):
+        """Inline PDF of the grade-distribution report for one examination."""
+        from .builders import build_report_data
+        from .renderers import render
+        from .tabularize import tabularize
+
+        exam = _exam_for(request, request.query_params.get("examination"))
+        data = build_report_data(exam, "GRADE_DISTRIBUTION", dict(request.query_params))
+        doc = tabularize(data, "GRADE_DISTRIBUTION")
+        response = HttpResponse(render(doc, "PDF"), content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="grade-distribution.pdf"'
+        return response
+
     @action(detail=False, methods=["get"], url_path="preview")
     def preview(self, request):
         """HTML preview rendered inline (non-file)."""
