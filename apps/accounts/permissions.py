@@ -161,11 +161,11 @@ class RolePermission(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+        if user.is_superadmin:
+            return True
         school, membership = resolve_active_school(request)
         if school is None:
             return False
-        if user.is_superadmin:
-            return True
         if membership is None or membership.school_id != school.id:
             return False
         return membership.role in self.required_roles(request, view)
