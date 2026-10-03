@@ -206,3 +206,7 @@ the correction workflow, SMS queueing/dedupe/resend, and imports/exports.
 - Important operations are idempotent: re-enrolling a list, re-calculating
   results or re-sending a campaign does not duplicate records.
 - Every security-relevant action writes an `AuditLog` entry.
+
+
+
+cd /opt/jointexams && git pull && docker compose -f deploy/docker-compose.prod.yml up -d --build

@@ -13,36 +13,58 @@ from apps.results.models import (
 
 
 def exam_scope(request):
-    school = request.school
-    if school is None:
-        return Examination.objects.none()
+    from apps.accounts.permissions import accessible_school_ids
+
+    school_ids = accessible_school_ids(request)
     return Examination.objects.filter(
-        Q(school=school) | Q(participating_schools=school)
+        Q(school__in=school_ids) | Q(participating_schools__in=school_ids)
     ).distinct()
 
 
 def dashboard(request):
-    """Organizer-level dashboard: exam counts, candidate volume, pending
-    marks, recent activity."""
+    """Dashboard: exam counts, candidate volume, pending marks, per-school
+    breakdowns and monthly series for charts."""
+    from collections import Counter
+
+    from apps.accounts.permissions import accessible_school_ids
     from apps.audit.models import AuditLog
     from apps.enrollment.models import ExaminationCandidate
 
+    school_ids = accessible_school_ids(request)
     exams = exam_scope(request)
     candidates_qs = ExaminationCandidate.objects.filter(
-        Q(examination__school=request.school)
-        | Q(examination__participating_schools=request.school),
+        Q(examination__school__in=school_ids)
+        | Q(examination__participating_schools__in=school_ids),
         status__in=ExaminationCandidate.PARTICIPATING,
     )
     marks = Mark.objects.filter(
-        Q(exam_candidate__examination__school=request.school)
-        | Q(exam_candidate__examination__participating_schools=request.school)
+        Q(exam_candidate__examination__school__in=school_ids)
+        | Q(exam_candidate__examination__participating_schools__in=school_ids)
     )
+    exams_by_month = [
+        {"month": m, "count": c}
+        for m, c in Counter(
+            e.created_at.strftime("%Y-%m") for e in exams.only("created_at")
+        ).most_common()
+    ]
+    exams_by_month.sort(key=lambda x: x["month"])
+    status_counts = dict(
+        Counter(
+            exams.values_list("status", flat=True)
+        )
+    )
+    candidates_by_school = [
+        {"school": name, "count": c}
+        for name, c in Counter(
+            candidates_qs.values_list("school__school_name", flat=True)
+        ).most_common(10)
+    ]
     recent = list(
         exams.order_by("-created_at").values("id", "name", "code", "status", "created_at")[:10]
     )
     activity = list(
         AuditLog.objects.filter(
-            Q(school=request.school) | Q(entity_type__icontains="examination")
+            Q(school_id__in=school_ids) | Q(entity_type__icontains="examination")
         )
         .order_by("-created_at")
         .values("action", "entity_type", "entity_id", "created_at")[:20]
@@ -70,6 +92,11 @@ def dashboard(request):
         },
         "recent_examinations": recent,
         "recent_activity": activity,
+        "exams_by_month": exams_by_month,
+        "exams_by_status": [
+            {"status": k, "count": v} for k, v in sorted(status_counts.items())
+        ],
+        "candidates_by_school": candidates_by_school,
     }
 
 
