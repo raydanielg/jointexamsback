@@ -1,3 +1,5 @@
+from collections import Counter
+
 """Report data builders — read the same calculated result rows the API
 exposes; nothing here re-implements calculation logic."""
 from collections import defaultdict
@@ -232,11 +234,30 @@ def _grade_distribution(exam, params):
         .values("grade", "exam_candidate__school__school_name")
         .annotate(count=Count("pk"))
     )
+    from apps.enrollment.models import ExaminationCandidate
+
+    scored_per_school = Counter(
+        CandidateExamResult.objects.filter(examination=exam, status=ResultStatus.SCORED)
+        .values_list("exam_candidate__school__school_name", flat=True)
+    )
+    absent_by_school = [
+        {
+            "exam_candidate__school__school_name": sname,
+            "grade": "ABSENT",
+            "count": max(0, total - scored_per_school.get(sname, 0)),
+        }
+        for sname, total in Counter(
+            ExaminationCandidate.objects.filter(
+                examination=exam, status__in=ExaminationCandidate.PARTICIPATING
+            ).values_list("school__school_name", flat=True)
+        ).items()
+    ]
+    overall_absent = sum(r["count"] for r in absent_by_school)
     return {
         "title": "Grade Distribution",
         "exam": exam,
-        "overall": list(rows),
-        "by_school": list(by_school),
+        "overall": list(rows) + ([{"grade": "ABSENT", "count": overall_absent}] if overall_absent else []),
+        "by_school": list(by_school) + absent_by_school,
     }
 
 

@@ -88,6 +88,58 @@ class ReportJobViewSet(viewsets.ReadOnlyModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="{job.file.name.split("/")[-1]}"'
         return response
 
+    @action(detail=False, methods=["get"], url_path="distribution")
+    def distribution(self, request):
+        """JSON grade distribution per school — A/B/C/D/F + ABSENT — for charts."""
+        from collections import Counter
+
+        from apps.enrollment.models import ExaminationCandidate
+        from apps.results.models import CandidateExamResult, ResultStatus
+
+        exam = _exam_for(request, request.query_params.get("examination"))
+        results = (
+            CandidateExamResult.objects.filter(examination=exam)
+            .values_list("exam_candidate__school_id", "exam_candidate__school__school_name", "grade", "status")
+        )
+        enrolled = Counter(
+            ExaminationCandidate.objects.filter(
+                examination=exam,
+                status__in=ExaminationCandidate.PARTICIPATING,
+            ).values_list("school_id", "school__school_name")
+        )
+        grades = {}
+        scored = {}
+        for sid, sname, grade, status in results:
+            key = (str(sid), sname)
+            if status == ResultStatus.SCORED:
+                grades.setdefault(key, Counter())[grade or "—"] += 1
+                scored[key] = scored.get(key, 0) + 1
+
+        letters = ["A", "B", "C", "D", "E", "F"]
+        by_school = []
+        overall = Counter()
+        for (sid, sname), total in sorted(enrolled.items(), key=lambda kv: kv[0][1]):
+            g = grades.get((sid, sname), Counter())
+            absent = total - scored.get((sid, sname), 0)
+            row = {"school_id": sid, "school": sname, "total": total, "ABSENT": absent}
+            for letter in letters:
+                row[letter] = g.get(letter, 0)
+            for k in list(g):
+                if k not in letters:
+                    row.setdefault(k, g[k])
+                    overall[k] += g[k]
+            by_school.append(row)
+            for letter in letters:
+                overall[letter] += g.get(letter, 0)
+            overall["ABSENT"] += absent
+
+        return ok({
+            "exam": {"id": str(exam.pk), "name": exam.name, "code": exam.code},
+            "letters": letters + ["ABSENT"],
+            "overall": dict(overall),
+            "by_school": by_school,
+        })
+
     @action(detail=False, methods=["get"], url_path="preview")
     def preview(self, request):
         """HTML preview rendered inline (non-file)."""
