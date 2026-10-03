@@ -105,10 +105,12 @@ class ExaminationSerializer(serializers.ModelSerializer):
             "participating_schools", "participating_school_names",
             "candidate_lists", "candidate_list_names",
             "created_by", "created_by_email", "published_at", "finalized_at",
+            "public_token",
             "subjects_detail", "created_at", "updated_at",
         )
         read_only_fields = (
             "id", "school", "status", "created_by", "published_at", "finalized_at",
+            "public_token",
             "created_at", "updated_at",
         )
 
