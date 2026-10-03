@@ -31,6 +31,35 @@ class CandidateListService:
         ]
         CandidateListEntry.objects.bulk_create(new_entries, ignore_conflicts=True)
         if new_entries:
+            # Unnumbered new members continue the list's current sequence
+            # (PREFIX/YEAR/NNNN) so numbering stays contiguous until the user
+            # explicitly regenerates.
+            unnumbered = [e.candidate for e in new_entries if not e.candidate.candidate_number]
+            if unnumbered:
+                stats = {}
+                for num in clist.candidates.exclude(
+                    pk__in=[e.candidate_id for e in new_entries]
+                ).values_list("candidate_number", flat=True):
+                    prefix, _, suffix = (num or "").rpartition("/")
+                    if prefix and suffix.isdigit():
+                        count, hi = stats.get(prefix, (0, 0))
+                        stats[prefix] = (count + 1, max(hi, int(suffix)))
+                if stats:
+                    prefix, (_, hi) = max(stats.items(), key=lambda kv: kv[1][0])
+                    seq = hi
+                    taken = set(
+                        Candidate.objects.filter(
+                            school_id__in=[c.school_id for c in unnumbered],
+                            candidate_number__startswith=f"{prefix}/",
+                        ).values_list("school_id", "candidate_number")
+                    )
+                    for c in unnumbered:
+                        seq += 1
+                        while (c.school_id, f"{prefix}/{seq:04d}") in taken:
+                            seq += 1
+                        c.candidate_number = f"{prefix}/{seq:04d}"
+                        taken.add((c.school_id, c.candidate_number))
+                    Candidate.objects.bulk_update(unnumbered, ["candidate_number"])
             log_action(
                 actor=actor, action="LIST_CANDIDATES_ADD", entity=clist, school=clist.school,
                 metadata={"count": len(new_entries)},
