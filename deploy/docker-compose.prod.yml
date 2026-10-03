@@ -1,0 +1,60 @@
+# Production compose — isolated from other services on the VPS:
+#  - Django/gunicorn only on 127.0.0.1:8010 (nginx proxies to it)
+#  - Postgres + Redis are internal to this compose network, NOT host-exposed
+services:
+  web:
+    build: ..
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://emas:${DB_PASSWORD:-emas}@postgres:5432/emas
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes:
+      - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
+    ports:
+      - "127.0.0.1:8010:8000"
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+
+  worker:
+    build: ..
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://emas:${DB_PASSWORD:-emas}@postgres:5432/emas
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes:
+      - ./media:/app/media
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A config worker --loglevel=info
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: emas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-emas}
+      POSTGRES_DB: emas
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
