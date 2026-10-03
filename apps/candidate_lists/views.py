@@ -82,6 +82,11 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
                 | Q(last_name__icontains=search)
                 | Q(candidate_number__icontains=search)
             )
+        from apps.core.db import numeric_suffix
+
+        qs = qs.annotate(num_seq=numeric_suffix("candidate_number")).order_by(
+            "num_seq", "candidate_number"
+        )
         page = self.paginate_queryset(qs)
         from apps.candidates.serializers import CandidateSerializer
 
