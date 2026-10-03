@@ -1,5 +1,6 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 
@@ -51,3 +52,39 @@ class CandidateViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
                 "Candidate has examination enrollments; set status to INACTIVE instead."
             )
         instance.delete()
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        """Delete multiple candidates at once — ``{"ids": [...]}``. Candidates
+        enrolled in any examination are skipped, not failed, so the rest still
+        delete cleanly."""
+        ids = request.data.get("ids") or []
+        qs = self.get_queryset().filter(pk__in=ids)
+        enrolled = set(
+            qs.filter(exam_enrollments__isnull=False)
+            .values_list("pk", flat=True)
+        )
+        skipped = list(
+            qs.filter(pk__in=enrolled)
+            .values_list("candidate_number", "first_name", "last_name")
+        )
+        deleted, _ = qs.exclude(pk__in=enrolled).delete()
+        log_action(
+            actor=request.user, action="CANDIDATE_BULK_DELETE",
+            request=request,
+            metadata={"deleted": deleted, "skipped": len(enrolled)},
+        )
+        from apps.core.responses import ok
+
+        return ok(
+            {
+                "deleted": deleted,
+                "skipped": [
+                    " ".join(p for p in s if p).strip() for s in skipped
+                ],
+            },
+            message=(
+                f"{deleted} deleted."
+                + (f" {len(enrolled)} skipped — they have exam enrollments." if enrolled else "")
+            ),
+        )
