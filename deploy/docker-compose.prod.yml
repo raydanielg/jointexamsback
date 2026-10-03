@@ -12,8 +12,8 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.production
     volumes:
-      - ./media:/app/media
-      - ./staticfiles:/app/staticfiles
+      - /opt/jointexams/media:/app/media
+      - /opt/jointexams/staticfiles:/app/staticfiles
     ports:
       - "127.0.0.1:8010:8000"
     restart: unless-stopped
@@ -35,7 +35,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.production
     volumes:
-      - ./media:/app/media
+      - /opt/jointexams/media:/app/media
     restart: unless-stopped
     depends_on:
       - postgres
