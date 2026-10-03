@@ -64,27 +64,40 @@ class CandidateViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
             qs.filter(exam_enrollments__isnull=False)
             .values_list("pk", flat=True)
         )
-        skipped = list(
+        kept = list(
             qs.filter(pk__in=enrolled)
             .values_list("candidate_number", "first_name", "last_name")
         )
         deleted, _ = qs.exclude(pk__in=enrolled).delete()
+        # Enrolled candidates keep their records + enrollments but are
+        # removed from every candidate list.
+        removed = 0
+        if enrolled:
+            from apps.candidate_lists.models import CandidateListEntry
+
+            removed, _ = CandidateListEntry.objects.filter(
+                candidate_id__in=enrolled
+            ).delete()
         log_action(
             actor=request.user, action="CANDIDATE_BULK_DELETE",
             request=request,
-            metadata={"deleted": deleted, "skipped": len(enrolled)},
+            metadata={
+                "deleted": deleted,
+                "kept_enrolled": len(enrolled),
+                "list_entries_removed": removed,
+            },
         )
         from apps.core.responses import ok
 
         return ok(
             {
                 "deleted": deleted,
-                "skipped": [
-                    " ".join(p for p in s if p).strip() for s in skipped
+                "kept": [
+                    " ".join(p for p in s if p).strip() for s in kept
                 ],
             },
             message=(
                 f"{deleted} deleted."
-                + (f" {len(enrolled)} skipped — they have exam enrollments." if enrolled else "")
+                + (f" {len(enrolled)} kept for their exam enrollments — removed from lists only." if enrolled else "")
             ),
         )
