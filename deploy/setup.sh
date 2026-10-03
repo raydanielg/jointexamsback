@@ -8,7 +8,7 @@ REPO="https://github.com/raydanielg/jointexamsback.git"
 APP_DIR=/opt/jointexams
 
 echo "== Detecting public IP"
-IP=$(curl -4 -s https://ifconfig.me || curl -4 -s https://api.ipify.org)
+IP=$(curl -4 -s https://api.ipify.org || curl -4 -s https://ipv4.icanhazip.com)
 DOMAIN="joint.${IP}.sslip.io"
 echo "   Domain: $DOMAIN"
 
@@ -29,7 +29,9 @@ cd "$APP_DIR"
 echo "== Writing .env"
 SECRET=$(openssl rand -hex 32)
 DBPASS=$(openssl rand -hex 16)
-if [ ! -f deploy/.env ]; then
+if [ -f deploy/.env ]; then
+  echo "   .env already exists — keeping it (delete to regenerate)"
+else
   sed -e "s/CHANGE_ME_GENERATE_A_LONG_RANDOM_STRING/$SECRET/" \
       -e "s/CHANGE_ME_STRONG_DB_PASSWORD/$DBPASS/" \
       -e "s/DOMAIN_HERE/$DOMAIN/g" \
