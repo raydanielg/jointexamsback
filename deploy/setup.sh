@@ -39,6 +39,9 @@ else
 fi
 
 echo "== Building + starting containers"
+mkdir -p staticfiles media
+# container runs as uid 1000 (emas) — it must own the mounted dirs
+chown -R 1000:1000 staticfiles media
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 
 echo "== Nginx site"
