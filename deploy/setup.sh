@@ -8,7 +8,7 @@ REPO="https://github.com/raydanielg/jointexamsback.git"
 APP_DIR=/opt/jointexams
 
 echo "== Detecting public IP"
-IP=$(curl -s https://ifconfig.me)
+IP=$(curl -4 -s https://ifconfig.me || curl -4 -s https://api.ipify.org)
 DOMAIN="joint.${IP}.sslip.io"
 echo "   Domain: $DOMAIN"
 
@@ -33,7 +33,7 @@ if [ ! -f deploy/.env ]; then
   sed -e "s/CHANGE_ME_GENERATE_A_LONG_RANDOM_STRING/$SECRET/" \
       -e "s/CHANGE_ME_STRONG_DB_PASSWORD/$DBPASS/" \
       -e "s/DOMAIN_HERE/$DOMAIN/g" \
-      deploy/.env.production.example > deploy/.env
+      deploy/env.production.template > deploy/.env
 fi
 
 echo "== Building + starting containers"
