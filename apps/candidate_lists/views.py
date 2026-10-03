@@ -20,6 +20,25 @@ from .serializers import (
 from .services import CandidateListService
 
 
+def _pdf_name(base, school_id):
+    """Download filename — include the filtered school's name when set."""
+    if not school_id:
+        return f"{base}.pdf"
+    import re
+
+    from apps.schools.models import School
+
+    name = (
+        School.objects.filter(pk=school_id)
+        .values_list("school_name", flat=True)
+        .first()
+    )
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", name or "").strip("-")
+    return f"{base}-{slug}.pdf" if slug else f"{base}.pdf"
+
+
+
+
 class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
     serializer_class = CandidateListSerializer
     permission_classes = [IsAuthenticated, RolePermission]
@@ -244,7 +263,8 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
         doc.build(story)
         buffer.seek(0)
         response = HttpResponse(buffer.read(), content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="{clist.name}.pdf"'
+        fname = _pdf_name(clist.name, school_id)
+        response["Content-Disposition"] = f'inline; filename="{fname}"'
         return response
 
     @action(detail=True, methods=["get"], url_path="checklist-pdf")
@@ -377,7 +397,7 @@ class CandidateListViewSet(SchoolScopedQuerySetMixin, viewsets.ModelViewSet):
 
         return FileResponse(
             buffer, as_attachment=False, content_type="application/pdf",
-            filename=f"{clist.name}-checklist.pdf",
+            filename=_pdf_name(f"{clist.name}-checklist", school_id),
         )
 
     @action(detail=True, methods=["post"], url_path="generate-numbers")
