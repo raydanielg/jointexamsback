@@ -76,6 +76,7 @@ class CandidateResultViewSet(viewsets.ReadOnlyModelViewSet):
         exam = _get_exam(request, request.query_params.get("examination"))
         qs = self.get_queryset().filter(examination=exam)
         qs = _apply_result_filters(qs, request.query_params)
+        qs = _top_n(qs, request.query_params.get("top"))
         return _results_pdf_response(exam, qs)
 
 
@@ -298,6 +299,17 @@ def _public_result_rows(qs):
     ]
 
 
+def _top_n(qs, top):
+    """Slice the best ``top`` results by total score (``?top=10``)."""
+    try:
+        n = int(top)
+    except (TypeError, ValueError):
+        return qs
+    if n <= 0:
+        return qs
+    return qs.order_by("-total_score", "exam_candidate__candidate__last_name")[:n]
+
+
 def _results_pdf_response(exam, qs):
     import html as _html
     import io
@@ -476,5 +488,6 @@ class PublicResultsView(viewsets.ViewSet):
     def pdf(self, request, token=None):
         exam = self._exam(token)
         qs = _apply_result_filters(self._qs(exam), request.query_params)
+        qs = _top_n(qs, request.query_params.get("top"))
         return _results_pdf_response(exam, qs)
 
