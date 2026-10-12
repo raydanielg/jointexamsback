@@ -379,11 +379,20 @@ def _results_pdf_response(exam, qs):
     cellb = ParagraphStyle("cellb", parent=cell, fontName="Helvetica-Bold")
 
     single_subject = exam.exam_subjects.count() == 1
-    last_col = "PTS" if single_subject else "Div"
+    last_col = "POS" if single_subject else "Div"
+    positions = {}
+    if single_subject:
+        ordered = sorted(
+            qs, key=lambda r: (r.total_score is None, -(r.total_score or 0))
+        )
+        for i, r in enumerate(ordered, 1):
+            if i == 1 or r.total_score != ordered[i - 2].total_score:
+                pos = i
+            positions[r.pk] = pos if r.total_score is not None else "—"
     rows = [["Candidate no.", "Full name", "School", "Score", "Gr", last_col]]
     for r in qs:
         tail = (
-            f"{r.points_sum:g}" if r.points_sum is not None else "—"
+            positions.get(r.pk, "—")
         ) if single_subject else (r.division or "—")
         rows.append([
             Paragraph(_html.escape(r.exam_candidate.candidate.candidate_number), cell),
