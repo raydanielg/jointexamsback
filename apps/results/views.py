@@ -307,7 +307,9 @@ def _top_n(qs, top):
         return qs
     if n <= 0:
         return qs
-    return qs.order_by("-total_score", "exam_candidate__candidate__last_name")[:n]
+    return qs.filter(total_score__isnull=False).order_by(
+        "-total_score", "exam_candidate__candidate__last_name"
+    )[:n]
 
 
 def _results_pdf_response(exam, qs):
