@@ -300,16 +300,18 @@ def _public_result_rows(qs):
 
 
 def _top_n(qs, top):
-    """Slice the best ``top`` results by total score (``?top=10``)."""
+    """Slice the best ``top`` results by total score (``?top=10``).
+    Negative values give the worst candidates instead (``?top=-10``)."""
     try:
         n = int(top)
     except (TypeError, ValueError):
         return qs
-    if n <= 0:
+    if n == 0:
         return qs
+    direction = "-" if n > 0 else ""
     return qs.filter(total_score__isnull=False).order_by(
-        "-total_score", "exam_candidate__candidate__last_name"
-    )[:n]
+        f"{direction}total_score", "exam_candidate__candidate__last_name"
+    )[: abs(n)]
 
 
 def _results_pdf_response(exam, qs):
